@@ -66,6 +66,13 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
         return this.wineInfo;
     }
 
+    /** Read-only process identity used by the no-root memory pressure probe. */
+    public static int getActiveGuestPid() {
+        synchronized (lock) {
+            return pid;
+        }
+    }
+
     public Container getContainer() { return this.container; }
     public void setContainer(Container container) { this.container = container; }
 
