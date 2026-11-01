@@ -47,6 +47,7 @@ import com.winlator.cmod.R;
 import com.winlator.cmod.contentdialog.ContentDialog;
 import com.winlator.cmod.core.Callback;
 import com.winlator.cmod.core.ImageUtils;
+import com.winlator.cmod.core.LowMemoryExitDiagnostics;
 import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.container.ContainerManager;
 import com.winlator.cmod.container.Shortcut;
@@ -109,7 +110,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         super.onCreate(savedInstanceState);
 
         notificationService = new Intent(this, NotificationService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             createNotificationChannel();
 
         boolean isBigPictureModeEnabled = sharedPreferences.getBoolean("enable_big_picture_mode", false);
@@ -120,6 +121,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }
 
         setContentView(R.layout.main_activity);
+        // Diagnose previous system-level memory kills after the UI is ready.
+        getWindow().getDecorView().post(() -> LowMemoryExitDiagnostics.showIfNeeded(this));
 
         drawerLayout = findViewById(R.id.DrawerLayout);
         NavigationView navigationView = findViewById(R.id.NavigationView);
@@ -170,9 +173,20 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             navigationView.setCheckedItem(menuItemId);
 
             if (!ImageFsInstaller.installIfNeeded(this, () -> requestAppPermissions())) {
-                if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
-                    startForegroundService(notificationService);
+                startNotificationForegroundService();
             }
+        }
+    }
+
+    private void startNotificationForegroundService() {
+        if (notificationService == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                startForegroundService(notificationService);
+            else
+                startService(notificationService);
+        } catch (RuntimeException error) {
+            Log.w("WinlatorMemory", "Foreground service could not start", error);
         }
     }
 
@@ -210,8 +224,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == PERMISSION_POST_NOTIFICATIONS_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED)
-                startForegroundService(notificationService);
+            // Android permits a foreground service without POST_NOTIFICATIONS.
+            startNotificationForegroundService();
         } else if (requestCode == PERMISSION_WRITE_EXTERNAL_STORAGE_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED)
                 requestAppPermissions();
