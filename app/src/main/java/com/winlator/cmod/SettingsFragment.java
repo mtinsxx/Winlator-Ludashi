@@ -124,6 +124,24 @@ public class SettingsFragment extends Fragment {
         final Context context = getContext();
         preferences = PreferenceManager.getDefaultSharedPreferences(context);
 
+        Button memoryDiagnostics = view.findViewById(R.id.BTMemoryDiagnostics);
+        if (memoryDiagnostics != null) {
+            memoryDiagnostics.setOnClickListener(v -> {
+                String report = com.winlator.cmod.core.MemoryPressureProbe.readRecentSamples(context);
+                new AlertDialog.Builder(context)
+                        .setTitle("Android memory / LMKD")
+                        .setMessage(report)
+                        .setPositiveButton("Copiar", (dialog, which) -> {
+                            android.content.ClipboardManager clipboard =
+                                    (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+                            if (clipboard != null) clipboard.setPrimaryClip(
+                                    android.content.ClipData.newPlainText("Winlator memory trace", report));
+                        })
+                        .setNegativeButton("Fechar", null)
+                        .show();
+            });
+        }
+
         // Check for Dark Mode preference
         isDarkMode = preferences.getBoolean("dark_mode", true);
         // Apply dynamic styles
