@@ -255,7 +255,14 @@ public class XServerDisplayActivity extends AppCompatActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        memoryPressureProbe = new MemoryPressureProbe(getApplicationContext());
+        memoryPressureProbe = new MemoryPressureProbe(getApplicationContext(), () ->
+                runOnUiThread(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        // Only clear nonessential UI thumbnail caches, never live Wine/Vulkan buffers.
+                        com.bumptech.glide.Glide.get(this).clearMemory();
+                        Log.i("WinlatorMemory", "Reclaimed Glide UI image cache under memory pressure");
+                    }
+                }));
         memoryPressureProbe.start();
         AppUtils.hideSystemUI(this);
         AppUtils.keepScreenOn(this);
