@@ -1,9 +1,10 @@
 name: Android CI Bionic
 on:
   push:
-    branches: [ "ludashi-3.1" ]
+    branches: [ "ludashi-3.1", "fix/android-memory-session-guard" ]
   pull_request:
     branches: [ "ludashi-3.1" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
