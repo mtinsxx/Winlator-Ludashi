@@ -30,9 +30,12 @@ public final class MemoryPressureProbe {
     private static final long MAX_TRACE_BYTES = 128 * 1024L;
     private final Context context;
     private ScheduledExecutorService executor;
+    private final Runnable cacheReclaimer;
+    private long lastCacheReclaimMs = 0L;
 
-    public MemoryPressureProbe(Context context) {
+    public MemoryPressureProbe(Context context, Runnable cacheReclaimer) {
         this.context = context.getApplicationContext();
+        this.cacheReclaimer = cacheReclaimer;
     }
 
     public synchronized void start() {
@@ -79,7 +82,40 @@ public final class MemoryPressureProbe {
         }
 
         appendTrace(sample.toString());
-        if (system.lowMemory) Log.w(TAG, "System reports low memory: " + sample);
+
+        boolean approachingSystemThreshold = system.threshold > 0
+                && system.availMem <= system.threshold * 2L;
+        boolean approachingCgroupLimit = nearMemoryHigh(hostPid)
+                || (guestPid > 0 && nearMemoryHigh(guestPid));
+        if (system.lowMemory || approachingSystemThreshold || approachingCgroupLimit) {
+            Log.w(TAG, "Pressure detected (read-only): " + sample);
+            long now = System.currentTimeMillis();
+            // At most once every two minutes: avoid repeatedly flushing UI caches.
+            if (cacheReclaimer != null && now - lastCacheReclaimMs >= 120000L) {
+                lastCacheReclaimMs = now;
+                cacheReclaimer.run();
+            }
+        }
+    }
+
+    private static boolean nearMemoryHigh(int pid) {
+        String group = readSmallFile(new File("/proc/" + pid + "/cgroup"), 2048);
+        for (String line : group.split("\\n")) {
+            if (!line.startsWith("0::")) continue;
+            String relative = line.substring(3).trim();
+            if (!relative.startsWith("/") || relative.contains("..")) return false;
+            File dir = new File("/sys/fs/cgroup", relative.substring(1));
+            try {
+                long current = Long.parseLong(
+                        readSmallFile(new File(dir, "memory.current"), 64).trim());
+                long high = Long.parseLong(
+                        readSmallFile(new File(dir, "memory.high"), 64).trim());
+                return high > 0 && current >= (high / 10L) * 9L;
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+        }
+        return false;
     }
 
     private static String processSample(int pid) {
