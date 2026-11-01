@@ -55,3 +55,55 @@ References:
 - https://developer.android.com/reference/android/app/ApplicationExitInfo
 - https://source.android.com/docs/core/perf/lmkd
 - https://source.android.com/docs/core/perf/memory-limiter
+
+## No-root reverse engineering probe (new)
+
+While a game is active, `MemoryPressureProbe` records a bounded internal
+trace every 8 seconds:
+
+- Android `availMem`, `threshold`, and `lowMemory` state;
+- system memory PSI `some avg10`, when exposed;
+- Winlator host PID and initial guest launcher PID, RSS, swap and
+  `oom_score_adj`;
+- each readable cgroup v2 `memory.current`, `memory.high`,
+  `memory.swap.max`, and `memory.events` state.
+
+Navigate to **Winlator Settings → Diagnostico de memoria (LMKD / Android 17)**
+to view and copy the 12 most recent readings. Log file
+`files/winlator_memory_trace.log` is rotated at roughly 128 KiB; internal
+storage is private to the app.
+
+As an early pressure mitigation, the probe rate-limits cleanup of **Glide UI
+image cache** to once per two minutes if Android reports low memory, available
+RAM approaches the threshold, or readable cgroup consumption is >=90% of
+`memory.high`. The foreground `Activity` performs this on the UI thread.
+The cleanup intentionally leaves Wine, Box64, XServer surfaces and Vulkan game
+resources untouched. Effectiveness must be measured; it is not a guaranteed
+LMKD workaround and does not create additional RAM.
+
+The guest PID is the launcher process; it might not be the heaviest Wine game
+process, and Android may hide procfs and cgroup files. Missing fields are not
+evidence of no pressure. Do not write to `oom_score_adj`, `memory.high` or
+Android system properties: ordinary application permissions cannot reliably
+override system memory policy.
+
+### Interpreting samples
+
+1. If `cgroupCurrentBytes` remains near `cgroupHighBytes`, and
+   `cgroupEvents` increases `high`/ `oom`/ `oom_kill`, investigate
+   Android 17 Memory Limiter and its implementation on the target firmware.
+2. If system PSI increases and `ApplicationExitInfo` reports
+   `REASON_LOW_MEMORY`, LMKD is implicated.
+3. If host is alive but the Wine/Box64 process vanished, inspect the guest
+   native memory usage and crash output. The ApplicationExitInfo record may
+   be missing for such Linux guest children.
+4. The Winlator HUD's total system RAM number is **not** the PSS/RSS of a
+   single process or its cgroup; a crash at 6.5 GB total does not establish a
+   6.5 GB per-app limit.
+
+### AOSP references
+
+- https://source.android.com/docs/core/perf/lmkd
+- https://source.android.com/docs/core/perf/memory-limiter
+- https://developer.android.com/topic/performance/memory/guide/kswapd-lmkd-interaction
+- https://developer.android.com/reference/android/app/ApplicationExitInfo
