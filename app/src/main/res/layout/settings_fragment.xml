@@ -496,6 +496,13 @@
                         android:layout_height="wrap_content"
                         android:orientation="vertical" >
 
+                        <Button
+                            android:id="@+id/BTMemoryDiagnostics"
+                            style="@style/ButtonPositive"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Diagnostico de memoria (LMKD / Android 17)" />
+
                         <CheckBox
                             android:id="@+id/CBOpenWithAndroidBrowser"
                             android:layout_width="wrap_content"
