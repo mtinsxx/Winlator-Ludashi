@@ -75,6 +75,7 @@ import com.winlator.cmod.core.KeyValueSet;
 import com.winlator.cmod.core.OnExtractFileListener;
 import com.winlator.cmod.core.PreloaderDialog;
 import com.winlator.cmod.core.ProcessHelper;
+import com.winlator.cmod.core.MemoryPressureProbe;
 import com.winlator.cmod.core.StringUtils;
 import com.winlator.cmod.core.TarCompressorUtils;
 import com.winlator.cmod.core.WineInfo;
@@ -164,6 +165,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     private String startupSelection;
     private WineInfo wineInfo;
     private final EnvVars envVars = new EnvVars();
+    private MemoryPressureProbe memoryPressureProbe;
     private boolean firstTimeBoot = false;
     private SharedPreferences preferences;
     private OnExtractFileListener onExtractFileListener;
@@ -253,6 +255,15 @@ public class XServerDisplayActivity extends AppCompatActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        memoryPressureProbe = new MemoryPressureProbe(getApplicationContext(), () ->
+                runOnUiThread(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        // Only clear nonessential UI thumbnail caches, never live Wine/Vulkan buffers.
+                        com.bumptech.glide.Glide.get(this).clearMemory();
+                        Log.i("WinlatorMemory", "Reclaimed Glide UI image cache under memory pressure");
+                    }
+                }));
+        memoryPressureProbe.start();
         AppUtils.hideSystemUI(this);
         AppUtils.keepScreenOn(this);
 
@@ -720,6 +731,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
             environment.onResume();
         }
         startTime = System.currentTimeMillis();
+        handler.removeCallbacks(savePlaytimeRunnable);
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
         if (!isInPictureInPictureMode())
             ProcessHelper.resumeAllWineProcesses();
@@ -802,6 +814,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
     }
 
     private void exit() {
+        if (memoryPressureProbe != null) memoryPressureProbe.stop();
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
         boolean removeLoadingBar = PreferenceManager.getDefaultSharedPreferences(this)
                 .getBoolean("remove_loading_bar_when_booting_games", false);
@@ -852,6 +865,7 @@ public class XServerDisplayActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (memoryPressureProbe != null) memoryPressureProbe.stop();
         if (taskManagerSidebar != null) taskManagerSidebar.stop();
         super.onDestroy();
     }
